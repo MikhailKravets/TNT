@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 
 import tqdm
 from pymongo import MongoClient
@@ -35,7 +36,7 @@ def load_imdb2mongo(data_dir, mongo_user, mongo_password, mongo_db):
                         print(f"{f_name} wasn't decoded")
 
 
-def load_imdb2pandas(user, password, db, collection):
+def load_imdb2pandas(user, password, db, collection, test_part=.15):
     client = MongoClient('localhost', 27017,
                          username=user,
                          password=password)
@@ -46,5 +47,11 @@ def load_imdb2pandas(user, password, db, collection):
     for v in collection.find():
         data.append([v['review'], v['score']])
 
-    df = pd.DataFrame(data, columns=['text', 'sentiment'])
-    return df
+    count = len(data)
+    test_count = int(test_part * count)
+    np.random.shuffle(data)
+
+    test, training = data[0:test_count], data[test_count:]
+    training = pd.DataFrame(training, columns=['text', 'sentiment'])
+    test = pd.DataFrame(test, columns=['text', 'sentiment'])
+    return training, test
