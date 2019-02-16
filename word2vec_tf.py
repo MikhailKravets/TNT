@@ -7,7 +7,7 @@ from tensorflow.python.keras.preprocessing.text import Tokenizer
 from tqdm import tqdm
 
 WINDOW_SIZE = 2
-EMBEDDING_DIM = 1
+EMBEDDING_DIM = 5
 N = 10_000
 
 corpus_raw = 'He is the king . The king is royal . She is the royal  queen '
@@ -73,5 +73,8 @@ if __name__ == '__main__':
 
     for i in tqdm(range(N)):
         sess.run(train_step, feed_dict={x: x_train, y_label: y_train})
+
+        if i % 300 == 0:
+            print(sess.run(cross_entropy_loss, {x: x_train, y_label: y_train}))
 
     vectors = sess.run(W1 + b1)
