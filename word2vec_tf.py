@@ -67,7 +67,7 @@ if __name__ == '__main__':
     init = tf.global_variables_initializer()
     sess.run(init)
 
-    cross_entropy_loss = tf.reduce_mean(-tf.reduce_sum(y_label * tf.log(output), reduction_indices=[1]))
+    cross_entropy_loss = -tf.reduce_mean(y_label * tf.log(output))
 
     train_step = tf.train.GradientDescentOptimizer(0.1).minimize(cross_entropy_loss)
 
