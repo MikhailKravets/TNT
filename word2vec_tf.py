@@ -3,10 +3,11 @@ tensorflow example
 """
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.keras.preprocessing.text import Tokenizer
 from tqdm import tqdm
 
 WINDOW_SIZE = 2
-EMBEDDING_DIM = 5
+EMBEDDING_DIM = 1
 N = 10_000
 
 corpus_raw = 'He is the king . The king is royal . She is the royal  queen '
@@ -20,35 +21,34 @@ def to_one_hot(data_point_index, size):
 
 
 if __name__ == '__main__':
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(corpus_raw.split('.'))
+
     words = set()
     for word in corpus_raw.split():
         if word != '.':
             words.add(word)
 
-    word2int = {}
-    int2word = {}
-
-    vocab_size = len(words)
-
-    for i, word in enumerate(words):
-        word2int[word] = i
-        int2word[i] = word
+    word2int = tokenizer.word_index
+    int2word = tokenizer.index_word
+    vocab_size = len(tokenizer.word_index) + 1
+    sequences = tokenizer.texts_to_sequences(corpus_raw.split('.'))
 
     sentences = [v.split() for v in corpus_raw.split('.')]
 
     data = []
 
-    for s in sentences:
-        for i, word in enumerate(s):
-            for nb_word in s[max(i - WINDOW_SIZE, 0):min(i + WINDOW_SIZE, len(s)) + 1]:
-                if nb_word != word:
-                    data.append([word, nb_word])
+    for s in sequences:
+        for i, v in enumerate(s):
+            for nb_v in s[max(i - WINDOW_SIZE, 0):min(i + WINDOW_SIZE, len(s)) + 1]:
+                if nb_v != v:
+                    data.append([v, nb_v])
 
     x_train, y_train = [], []
 
     for x, y in data:
-        x_train.append(to_one_hot(word2int[x], vocab_size))
-        y_train.append(to_one_hot(word2int[y], vocab_size))
+        x_train.append(to_one_hot(x, vocab_size))
+        y_train.append(to_one_hot(y, vocab_size))
 
     x = tf.placeholder(tf.float32, shape=(None, vocab_size))
     y_label = tf.placeholder(tf.float32, shape=(None, vocab_size))
