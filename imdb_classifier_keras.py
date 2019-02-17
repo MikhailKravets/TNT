@@ -9,6 +9,17 @@ def decode_review(text, reverse_word_index):
     return ' '.join([reverse_word_index.get(i, '?') for i in text])
 
 
+def encode_review(text, word_index):
+    res = []
+
+    for v in text:
+        try:
+            res.append(word_index[v])
+        except KeyError:
+            res.append(2)
+    return res
+
+
 if __name__ == '__main__':
     (train_data, train_labels), (test_data, test_labels) = imdb.load_data(num_words=10000)
     word_index = imdb.get_word_index()
@@ -60,6 +71,13 @@ if __name__ == '__main__':
 
     acc, loss, val_acc = history.history['acc'], history.history['loss'], history.history['val_acc']
     epochs = range(1, len(acc) + 1)
+
+    encoded = encode_review("The good film and director", word_index)
+    encoded2 = encode_review("The best movie ever", word_index)
+    encoded = pad_sequences([encoded, encoded2], value=word_index["<PAD>"], padding='post', maxlen=256)
+
+    res = model.predict(encoded)
+    print(res)
 
     plot.plot(epochs, acc, 'bo', 'Loss')
     plot.plot(epochs, val_acc, 'b', 'Validation')
