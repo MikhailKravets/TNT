@@ -7,7 +7,8 @@ if __name__ == '__main__':
     x_train, x_test = x_train / 255.0, x_test / 255.0
 
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Flatten(input_shape=(28, 28)),
+        tf.keras.layers.Conv1D(24, kernel_size=5, input_shape=(28, 28), activation='relu'),
+        tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(256, activation=tf.keras.activations.relu),
         tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(10, activation=tf.keras.activations.softmax)
