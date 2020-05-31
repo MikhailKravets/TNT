@@ -1,29 +1,27 @@
-import numpy as np
 import tensorflow as tf
 
 
 if __name__ == '__main__':
-    data = np.random.random((1000, 32))
-    labels = np.random.random((1000, 10))
+    mnist = tf.keras.datasets.mnist
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train, x_test = x_train / 255.0, x_test / 255.0
 
-    val_data = np.random.random((100, 32))
-    val_labels = np.random.random((100, 10))
-
-    dataset = tf.data.Dataset.from_tensor_slices((data, labels))
-    dataset = dataset.batch(32).repeat()
-
-    val_dataset = tf.data.Dataset.from_tensor_slices((val_data, val_labels))
-    val_dataset = val_dataset.batch(32).repeat()
-
-    model = tf.keras.Sequential([
-        tf.keras.layers.Dense(64, input_shape=(32,), activation='relu'),
-        tf.keras.layers.Dense(64, activation='relu'),
-        tf.keras.layers.Dense(10, activation='softmax'),
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Flatten(input_shape=(28, 28)),
+        tf.keras.layers.Dense(256, activation=tf.keras.activations.relu),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(10, activation=tf.keras.activations.softmax)
     ])
-    model.compile(
-        optimizer=tf.train.AdamOptimizer(0.01),
-        loss=tf.keras.losses.categorical_crossentropy,
-        metrics=[tf.keras.metrics.categorical_accuracy],
-    )
+    x, y = x_test[:1], y_test[:1]
+    predictions = model(x).numpy()
 
-    model.fit(dataset, epochs=1000, steps_per_epoch=10, validation_data=val_dataset, validation_steps=3)
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    init_loss = loss_fn(y, predictions).numpy()
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(0.001),
+        loss=loss_fn,
+        metrics=['accuracy']
+    )
+    model.fit(x_train, y_train, epochs=5)
+    model.evaluate(x_test, y_test, verbose=2)
