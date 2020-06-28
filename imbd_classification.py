@@ -5,6 +5,7 @@ import pandas as pd
 
 import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 import tensorflow_datasets as tfds
 
 
@@ -28,8 +29,19 @@ if __name__ == '__main__':
     tokenizer = Tokenizer()
     tokenizer.fit_on_texts(data['review'])
 
-    data['token'] = tokenizer.texts_to_sequences(data['review'])
-    print(data.head())
+    inp = pad_sequences(tokenizer.texts_to_sequences(data['review']))
+    dataset = tf.data.Dataset.from_tensor_slices((inp, np.expand_dims(data['sentiment'].values, 1)))
+    test_dataset = dataset.take(10_000)
 
-    embedding = tf.keras.layers.Embedding(99426, 5)
-    res = embedding(data['token'][:1])
+    model = tf.keras.Sequential([
+        tf.keras.layers.Embedding(99426, 8),
+        tf.keras.layers.GRU(8),
+        tf.keras.layers.Dense(1, activation='relu'),
+    ])
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(0.0001),
+        loss=tf.losses.BinaryCrossentropy(),
+        metrics=['accuracy']
+    )
+    model.fit(dataset, batch_size=8, validation_data=test_dataset, validation_steps=30)
