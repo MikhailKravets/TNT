@@ -6,7 +6,6 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-import tensorflow_datasets as tfds
 
 
 def preprocess_text(sen):
@@ -29,14 +28,21 @@ if __name__ == '__main__':
     tokenizer = Tokenizer()
     tokenizer.fit_on_texts(data['review'])
 
-    inp = pad_sequences(tokenizer.texts_to_sequences(data['review']))
+    inp = pad_sequences(tokenizer.texts_to_sequences(data['review']), maxlen=1600)
     dataset = tf.data.Dataset.from_tensor_slices((inp, np.expand_dims(data['sentiment'].values, 1)))
     test_dataset = dataset.take(10_000)
+    dataset = dataset.skip(10_000)
 
     model = tf.keras.Sequential([
-        tf.keras.layers.Embedding(99426, 8),
-        tf.keras.layers.GRU(8),
-        tf.keras.layers.Dense(1, activation='relu'),
+        tf.keras.layers.Embedding(99426, 64),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Conv1D(64, 3, 3, padding='same', activation='relu'),
+        tf.keras.layers.MaxPool1D(pool_size=2, padding='same'),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64)),
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(10),
+        tf.keras.layers.Softmax()
     ])
 
     model.compile(
@@ -44,4 +50,5 @@ if __name__ == '__main__':
         loss=tf.losses.BinaryCrossentropy(),
         metrics=['accuracy']
     )
-    model.fit(dataset, batch_size=8, validation_data=test_dataset, validation_steps=30)
+    print(model.summary())
+    model.fit(dataset, batch_size=32, validation_data=test_dataset, validation_steps=30, epochs=4)
