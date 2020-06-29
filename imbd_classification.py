@@ -40,7 +40,7 @@ if __name__ == '__main__':
     model = tf.keras.Sequential([
         tf.keras.layers.Embedding(99427, 64, input_length=1600),
         tf.keras.layers.Dropout(0.3),
-        tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64)),
+        tf.keras.layers.Dense(256, activation='relu'),
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.Dense(1),
     ])
