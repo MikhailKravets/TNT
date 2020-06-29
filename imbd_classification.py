@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(1e-3),
-        loss=tf.losses.CategoricalCrossentropy(from_logits=True),
+        loss=tf.losses.BinaryCrossentropy(from_logits=True),
         metrics=['accuracy']
     )
     print(model.summary())
