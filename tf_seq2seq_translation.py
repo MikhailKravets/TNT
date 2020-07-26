@@ -22,7 +22,10 @@ def convert_data():
 if __name__ == '__main__':
     data = pandas.read_csv('.data/fra_cleared.csv')
 
-    eng_tokenizer, french_tokenizer = Tokenizer(), Tokenizer()
+    data['French'] = data['French'].apply(lambda e: f"<START> {e} <STOP>")
+
+    filters = '"#$%&()*+-./:;<=>@[\\]^_`{|}~\t\n'
+    eng_tokenizer, french_tokenizer = Tokenizer(filters=filters), Tokenizer(filters=filters)
     eng_tokenizer.fit_on_texts(data['English'])
     french_tokenizer.fit_on_texts(data['French'])
 
@@ -57,4 +60,4 @@ if __name__ == '__main__':
 
     # TODO: connect tensorboard
     # TODO: connect checkpoints
-    # TODO: train
+    # TODO: how to create decoder_target_data??? Prepend <START> and <STOP> to sentences in French
