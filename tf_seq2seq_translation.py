@@ -33,15 +33,15 @@ if __name__ == '__main__':
     decoder_words_count = len(french_tokenizer.word_index)
 
     encoder_inp = layers.Input(shape=(None,))
-    encoder_emb = layers.Embedding(encoder_words_count, 128)(encoder_inp)
+    encoder_emb = layers.Embedding(encoder_words_count, 32)(encoder_inp)
 
-    encoder = layers.LSTM(64, return_state=True)
+    encoder = layers.LSTM(28, return_state=True)
     encoder_output, state_h, state_c = encoder(encoder_emb)
 
     decoder_inp = layers.Input(shape=(None,))
-    decoder_emb = layers.Embedding(decoder_words_count, 128)(decoder_inp)
+    decoder_emb = layers.Embedding(decoder_words_count, 32)(decoder_inp)
 
-    decoder = layers.LSTM(64, return_sequences=True, return_state=True)
+    decoder = layers.LSTM(28, return_sequences=True, return_state=True)
     decoder_output, _, _ = decoder(decoder_emb, initial_state=(state_h, state_c))
 
     dense = layers.Dense(decoder_words_count, activation='softmax')
@@ -57,6 +57,12 @@ if __name__ == '__main__':
         metrics=['acc']
     )
     print(model.summary())
+
+    model.fit(
+        [encoder_input_vectors, decoder_input_vectors],
+        decoder_input_vectors,
+        batch_size=32
+    )
 
     # TODO: connect tensorboard
     # TODO: connect checkpoints
