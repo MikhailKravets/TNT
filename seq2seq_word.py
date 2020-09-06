@@ -13,7 +13,7 @@ data_path = '.data/fra_cleared.csv'
 max_en, max_fr = 44, 57  # Max length of sentence. Calculated previously
 
 if __name__ == '__main__':
-    dataset = pd.read_csv(data_path)
+    dataset = pd.read_csv(data_path)[:5000]
     dataset['Target'] = dataset['French'].apply(lambda e: f"{e} <END>")
     dataset['French'] = dataset['French'].apply(lambda e: f"<START> {e} <END>")
 
@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # fr_target_data = pad_sequences(fr_tokenizer.texts_to_sequences(dataset['Target']), maxlen=max_fr)
 
-    # fr_target_data = np.zeros(shape=(len(fr_tokenizer.word_index), max_fr, fr_tokenizer.document_count))
+    fr_target_data = np.zeros(shape=(fr_tokenizer.document_count, max_fr, len(fr_tokenizer.word_index)))
 
     encoder_inp = layers.Input(shape=(None,))
     encoder_embedding = layers.Embedding(en_tokenizer.document_count, 64)(encoder_inp)
@@ -50,19 +50,10 @@ if __name__ == '__main__':
         metrics=['acc'],
     )
     print(model.summary())
+    print(fr_target_data.shape)
 
-
-    def generator(batch_size=12):
-        l = len(dataset)
-        while True:
-            for i in range(0, l, batch_size):
-                inp = [en_inp_data[i:batch_size], fr_inp_data[i:batch_size]]
-                target = np.zeros(shape=(len(fr_tokenizer.word_index), max_fr, batch_size))
-                print(target.shape)
-                yield inp, target
-
-    model.fit(
-        generator(),
-        batch_size=12,
-        epochs=50,
-    )
+    # model.fit(
+    #     [en_inp_data, fr_inp_data], fr_target_data,
+    #     batch_size=12,
+    #     epochs=50,
+    # )
