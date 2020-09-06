@@ -24,10 +24,10 @@ if __name__ == '__main__':
     dataset = pd.read_csv(data_path)[:5000]
     dataset['French'] = dataset['French'].apply(lambda e: f"START_ {e} _END")
 
-    en_tokenizer = Tokenizer()
+    en_tokenizer = Tokenizer(filters='"#$%&()*+,-./:;<=>@[\\]^`{|}~\t\n')
     en_tokenizer.fit_on_texts(dataset['English'])
 
-    fr_tokenizer = Tokenizer()
+    fr_tokenizer = Tokenizer(filters='!?"#$%&()*+,-./:;<=>@[\\]^`{|}~\t\n')
     fr_tokenizer.fit_on_texts(dataset['French'])
 
     en_inp_data = en_tokenizer.texts_to_sequences(dataset['English'])
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     model.fit(
         [en_inp_data, fr_inp_data], fr_target_data,
         batch_size=32,
-        epochs=200,
+        epochs=300,
         validation_split=0.1
     )
 
@@ -100,13 +100,13 @@ if __name__ == '__main__':
 
         stop = False
 
-        decode_start = pad_sequences(fr_tokenizer.texts_to_sequences(["START"]), maxlen=max_fr)
+        decode_start = pad_sequences(fr_tokenizer.texts_to_sequences(["START_"]), maxlen=max_fr)
         tokens = []
         current_len = 0
-        while not stop and current_len < max_fr:
-            output = decoder_model([decode_start] + states)
-            output = output[0]
 
+        output = decoder_model.predict([decode_start] + states)
+        output = output[0]
+        while not stop and current_len < max_fr:
             token = np.argmax(output[0, current_len, :])
 
             if token == 2:
