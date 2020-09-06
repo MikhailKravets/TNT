@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from tensorflow.keras import layers
+from tensorflow.keras import layers, losses
 from tensorflow.python.data import Dataset
 from tensorflow.python.keras import Model
 from tensorflow.python.keras.preprocessing.sequence import pad_sequences
@@ -20,8 +20,8 @@ def max_sequence_length(sequences):
 
 
 if __name__ == '__main__':
-    # TODO: how to use tf Datasets to load whole dataset?
-    dataset = pd.read_csv(data_path)[:5000]
+    dataset = pd.read_csv(data_path)[:20000]
+    dataset['Target'] = dataset['French'].apply(lambda e: f"{e} _END")
     dataset['French'] = dataset['French'].apply(lambda e: f"START_ {e} _END")
 
     en_tokenizer = Tokenizer(filters='"#$%&()*+,-./:;<=>@[\\]^`{|}~\t\n')
@@ -32,18 +32,14 @@ if __name__ == '__main__':
 
     en_inp_data = en_tokenizer.texts_to_sequences(dataset['English'])
     fr_inp_data = fr_tokenizer.texts_to_sequences(dataset['French'])
+    fr_target_data = fr_tokenizer.texts_to_sequences(dataset['Target'])
 
     max_en, max_fr = max_sequence_length(en_inp_data), max_sequence_length(fr_inp_data)
-    num_target_index = len(fr_tokenizer.word_index) + 1
+    num_target_index = len(fr_tokenizer.word_index)
 
-    fr_target_data = np.zeros(shape=(fr_tokenizer.document_count, max_fr, num_target_index))
-
-    for i, v in enumerate(fr_inp_data):
-        for j, ind in enumerate(v[1:]):
-            fr_target_data[i, j, ind] = 1
-
-    en_inp_data = pad_sequences(en_inp_data, maxlen=max_en)
-    fr_inp_data = pad_sequences(fr_inp_data, maxlen=max_fr)
+    en_inp_data = pad_sequences(en_inp_data, maxlen=max_en, padding='post')
+    fr_inp_data = pad_sequences(fr_inp_data, maxlen=max_fr, padding='post')
+    fr_target_data = pad_sequences(fr_target_data, maxlen=max_fr, padding='post')
 
     encoder_inp = layers.Input(shape=(None,))
     encoder_embedding = layers.Embedding(en_tokenizer.document_count, 64)(encoder_inp)
@@ -64,16 +60,15 @@ if __name__ == '__main__':
     model = Model([encoder_inp, decoder_inp], dense_outputs)
     model.compile(
         optimizer='rmsprop',
-        loss='categorical_crossentropy',
+        loss='sparse_categorical_crossentropy',
         metrics=['acc'],
     )
     print(model.summary())
-    print(fr_target_data.shape)
 
     model.fit(
         [en_inp_data, fr_inp_data], fr_target_data,
-        batch_size=32,
-        epochs=300,
+        batch_size=128,
+        epochs=8,
         validation_split=0.1
     )
 
@@ -104,10 +99,10 @@ if __name__ == '__main__':
         tokens = []
         current_len = 0
 
-        output = decoder_model.predict([decode_start] + states)
-        output = output[0]
         while not stop and current_len < max_fr:
-            token = np.argmax(output[0, current_len, :])
+            output = decoder_model.predict([decode_start] + states)
+            output = output[0]
+            token = np.argmax(output[0, -1, 1:])
 
             if token == 2:
                 stop = True
