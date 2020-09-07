@@ -59,16 +59,16 @@ if __name__ == '__main__':
 
     model = Model([encoder_inp, decoder_inp], dense_outputs)
     model.compile(
-        optimizer='rmsprop',
-        loss='sparse_categorical_crossentropy',
-        metrics=['acc'],
+        optimizer=tf.optimizers.RMSprop(learning_rate=0.0001, momentum=0.05),
+        loss=losses.SparseCategoricalCrossentropy(from_logits=False),
+        metrics=['sparse_categorical_accuracy'],
     )
     print(model.summary())
 
     model.fit(
         [en_inp_data, fr_inp_data], fr_target_data,
         batch_size=128,
-        epochs=8,
+        epochs=15,
         validation_split=0.1
     )
 
