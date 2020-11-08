@@ -1,11 +1,14 @@
-import os
 import re
 from pathlib import Path
 
 import tensorflow as tf
-
+from sklearn.model_selection import train_test_split
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+BATCH_SIZE = 64
+EMBEDDING_DIM = 256
+UNITS = 1024
 
 
 def preprocess_sentence(w):
@@ -42,9 +45,68 @@ def tokenize(lang):
     return tensor, lang_tokenizer
 
 
+class Encoder(tf.keras.Model):
+
+    def __init__(self, vocab_size, embedding_dim, units):
+        super(Encoder, self).__init__()
+        self.units = units
+        self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
+        self.gru = tf.keras.layers.GRU(
+            self.units,
+            return_sequences=True,
+            return_state=True,
+            recurrent_initializer='glorot_uniform')
+
+    def call(self, inputs, training=None, mask=None):
+        x = self.embedding(inputs)
+        output, state = self.gru(x)
+        return output, state
+
+
+class Decoder(tf.keras.Model):
+
+    def __init__(self, vocab_size, embedding_dim, units):
+        super().__init__()
+        self.units = units
+        self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
+        self.gru = tf.keras.layers.GRU(
+            self.units,
+            return_sequences=True,
+            return_state=True,
+            recurrent_initializer='glorot_uniform'
+        )
+        self.dense = tf.keras.layers.Dense(vocab_size)
+
+    def call(self, inputs, hidden, training=None, mask=None):
+        x = self.embedding(inputs)
+        x, state = self.gru(x, initial_state=hidden)
+        x = self.dense(x)
+        return x, state
+
+
 if __name__ == '__main__':
     path_to_file = BASE_DIR.joinpath(".data/deu.txt")
     inp_data, target_data = create_dataset(path_to_file, -1)
 
     inp_tensor, inp_tokenizer = tokenize(inp_data)
     target_tensor, target_tokenizer = tokenize(target_data)
+
+    input_train, input_val, target_train, target_val = train_test_split(inp_tensor, target_tensor, test_size=0.2)
+
+    vocab_inp_size = len(inp_tokenizer.word_index) + 1
+    vocab_tar_size = len(target_tokenizer.word_index) + 1
+
+    dataset = tf.data.Dataset.from_tensor_slices((input_train, target_train)).shuffle(len(input_train))
+    dataset = dataset.batch(BATCH_SIZE)
+
+    sample_batch = next(iter(dataset.take(1)))
+    encoder = Encoder(vocab_inp_size, EMBEDDING_DIM, UNITS)
+    sample_encoder_output, sample_state = encoder(sample_batch[0])
+
+    decoder = Decoder(vocab_tar_size, EMBEDDING_DIM, UNITS)
+    sample_decoder_output, sample_decoder_state = decoder(sample_batch[1], sample_state)
+
+    print(f"Encoder output shape: {sample_encoder_output.shape}")
+    print(f"State shape: {sample_state.shape}")
+    print(f"Sample decoder shape: {sample_decoder_output.shape}")
+    print(f"State shape (from dec. should be same): {sample_decoder_state.shape}")

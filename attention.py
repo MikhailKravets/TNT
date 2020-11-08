@@ -278,8 +278,7 @@ if __name__ == '__main__':
 
     decoder = Decoder(vocab_tar_size, embedding_dim, units, BATCH_SIZE)
 
-    sample_decoder_output, _, _ = decoder(tf.random.uniform((BATCH_SIZE, 1)),
-                                       sample_hidden, sample_output)
+    sample_decoder_output, _, _ = decoder(tf.random.uniform((BATCH_SIZE, 1)), sample_hidden, sample_output)
     print('Decoder output shape: (batch_size, vocab size) {}'.format(sample_decoder_output.shape))
 
     optimizer = tf.keras.optimizers.Adam()
