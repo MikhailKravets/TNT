@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+NUM_EXAMPLES = 20_000  # Place -1 to load all examples
 BATCH_SIZE = 64
 EMBEDDING_DIM = 256
 UNITS = 1024
@@ -84,9 +85,26 @@ class Decoder(tf.keras.Model):
         return x, state
 
 
+class Translator(tf.keras.Model):
+
+    def __init__(self, encoder_vocab_size, decoder_vocab_size, embedding_dim, units):
+        super().__init__()
+        self.encoder = Encoder(encoder_vocab_size, embedding_dim, units)
+        self.decoder = Decoder(decoder_vocab_size, embedding_dim, units)
+
+    def call(self, inputs, training=None, mask=None):
+        x, state = self.encoder(inputs[0])
+        dec, _ = self.decoder(inputs[1], state)
+        return dec, state
+
+    def train_step(self, data):
+        x, y = data
+        print(x.numpy())
+
+
 if __name__ == '__main__':
     path_to_file = BASE_DIR.joinpath(".data/deu.txt")
-    inp_data, target_data = create_dataset(path_to_file, -1)
+    inp_data, target_data = create_dataset(path_to_file, NUM_EXAMPLES)
 
     inp_tensor, inp_tokenizer = tokenize(inp_data)
     target_tensor, target_tokenizer = tokenize(target_data)
@@ -110,3 +128,12 @@ if __name__ == '__main__':
     print(f"State shape: {sample_state.shape}")
     print(f"Sample decoder shape: {sample_decoder_output.shape}")
     print(f"State shape (from dec. should be same): {sample_decoder_state.shape}")
+
+    translator = Translator(
+        encoder_vocab_size=vocab_inp_size,
+        decoder_vocab_size=vocab_tar_size,
+        embedding_dim=EMBEDDING_DIM,
+        units=UNITS,
+    )
+    translator.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['acc'])
+    translator.fit(dataset)  # TODO: make training as normal function, not class
