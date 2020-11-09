@@ -282,8 +282,7 @@ if __name__ == '__main__':
     print('Decoder output shape: (batch_size, vocab size) {}'.format(sample_decoder_output.shape))
 
     optimizer = tf.keras.optimizers.Adam()
-    loss_object = tf.keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction='none')
+    loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 
     EPOCHS = 10
 

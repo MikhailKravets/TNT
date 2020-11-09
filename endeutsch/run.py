@@ -1,4 +1,5 @@
 import re
+import time
 from pathlib import Path
 
 import tensorflow as tf
@@ -10,6 +11,8 @@ NUM_EXAMPLES = 20_000  # Place -1 to load all examples
 BATCH_SIZE = 64
 EMBEDDING_DIM = 256
 UNITS = 1024
+EPOCHS = 10
+MAX_LEN_TARGET = 30
 
 
 def preprocess_sentence(w):
@@ -46,6 +49,40 @@ def tokenize(lang):
     return tensor, lang_tokenizer
 
 
+def loss_function(real, pred, loss_object):
+    mask = tf.math.logical_not(tf.math.equal(real, 0))
+    loss_ = loss_object(real, pred)
+
+    mask = tf.cast(mask, dtype=loss_.dtype)
+    loss_ *= mask
+
+    return tf.reduce_mean(loss_)
+
+
+def evaluate(sentence, input_tokenizer, target_tokenizer, encoder, decoder):
+    sentence = preprocess_sentence(sentence)
+    inputs = [input_tokenizer.word_index[v] for v in sentence.split(' ')]
+    inputs = tf.keras.preprocessing.sequence.pad_sequences([inputs], padding='post')
+
+    enc_output, state = encoder(inputs)
+
+    dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']], 0)
+
+    result = ""
+    for _ in range(MAX_LEN_TARGET):
+        predictions, state = decoder(dec_input, state)
+
+        max_id = tf.argmax(predictions[0]).numpy()
+        result += target_tokenizer.index_word[max_id] + ' '
+
+        if target_tokenizer.index_word[max_id] == '<end>':
+            return result
+
+        dec_input = tf.expand_dims([max_id], 0)
+
+    return result
+
+
 class Encoder(tf.keras.Model):
 
     def __init__(self, vocab_size, embedding_dim, units):
@@ -80,26 +117,12 @@ class Decoder(tf.keras.Model):
 
     def call(self, inputs, hidden, training=None, mask=None):
         x = self.embedding(inputs)
-        x, state = self.gru(x, initial_state=hidden)
-        x = self.dense(x)
+        output, state = self.gru(x, initial_state=hidden)
+
+        output = tf.reshape(output, (-1, output.shape[2]))
+
+        x = self.dense(output)
         return x, state
-
-
-class Translator(tf.keras.Model):
-
-    def __init__(self, encoder_vocab_size, decoder_vocab_size, embedding_dim, units):
-        super().__init__()
-        self.encoder = Encoder(encoder_vocab_size, embedding_dim, units)
-        self.decoder = Decoder(decoder_vocab_size, embedding_dim, units)
-
-    def call(self, inputs, training=None, mask=None):
-        x, state = self.encoder(inputs[0])
-        dec, _ = self.decoder(inputs[1], state)
-        return dec, state
-
-    def train_step(self, data):
-        x, y = data
-        print(x.numpy())
 
 
 if __name__ == '__main__':
@@ -129,11 +152,39 @@ if __name__ == '__main__':
     print(f"Sample decoder shape: {sample_decoder_output.shape}")
     print(f"State shape (from dec. should be same): {sample_decoder_state.shape}")
 
-    translator = Translator(
-        encoder_vocab_size=vocab_inp_size,
-        decoder_vocab_size=vocab_tar_size,
-        embedding_dim=EMBEDDING_DIM,
-        units=UNITS,
-    )
-    translator.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['acc'])
-    translator.fit(dataset)  # TODO: make training as normal function, not class
+    steps_per_epoch = len(input_train) // BATCH_SIZE
+    optimizer = tf.keras.optimizers.Adam()
+    loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
+
+    for epoch in range(EPOCHS):
+        start = time.time()
+        total_loss = 0
+
+        for i, (inp, target) in enumerate(dataset.take(steps_per_epoch)):
+            loss = 0
+
+            with tf.GradientTape() as tape:
+                enc_output, state = encoder(inp)
+                dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
+
+                for t in range(1, target.shape[1]):
+                    predictions, hidden = decoder(dec_input, state)
+
+                    loss += loss_function(target[:, t], predictions, loss_object)
+
+                    # using teacher forcing
+                    dec_input = tf.expand_dims(target[:, t], 1)
+
+            batch_loss = loss / target.shape[1]
+            variables = encoder.trainable_variables + decoder.trainable_variables
+            gradients = tape.gradient(loss, variables)
+            optimizer.apply_gradients(zip(gradients, variables))
+
+            if i % 50 == 0:
+                print(f"Epoch {epoch + 1} Batch {i} Loss {batch_loss:.4f}")
+
+        # TODO: calculate validation accuracy
+        # TODO: train on whole dataset
+
+        print(f"Epoch {epoch + 1} Loss {total_loss / steps_per_epoch:.4f}")
+        print(f"Time taken for 1 epoch {time.time() - start} sec\n")
