@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-NUM_EXAMPLES = 150_000  # Place -1 to load all examples
+NUM_EXAMPLES = 100_000  # Place -1 to load all examples
 BATCH_SIZE = 64
 EMBEDDING_DIM = 256
 UNITS = 1024
@@ -58,6 +58,40 @@ def loss_function(real, pred, loss_object):
     loss_ *= mask
 
     return tf.reduce_mean(loss_)
+
+
+@tf.function
+def train_step(inp, target, target_tokenizer, encoder, decoder, optimizer, metric):
+    loss = 0
+
+    with tf.GradientTape() as tape:
+        enc_output, state = encoder(inp)
+
+        dec_hidden = state
+
+        dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
+        pred = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
+
+        for t in range(1, target.shape[1]):
+            predictions, dec_hidden = decoder(dec_input, dec_hidden)
+
+            loss += loss_function(target[:, t], predictions, loss_object)
+
+            # using teacher forcing
+            dec_input = tf.expand_dims(target[:, t], 1)
+            pred = tf.concat([pred, tf.cast(tf.expand_dims(tf.argmax(predictions, axis=1), 1), dtype=tf.int32)], axis=1)
+
+        metric.update_state(
+            tf.expand_dims(target, 2),
+            tf.expand_dims(pred, 2)
+        )
+
+    batch_loss = loss / target.shape[1]
+    variables = encoder.trainable_variables + decoder.trainable_variables
+    gradients = tape.gradient(loss, variables)
+    optimizer.apply_gradients(zip(gradients, variables))
+
+    return batch_loss
 
 
 def accuracy(x, y, encoder, decoder, metric, target_tokenizer):
@@ -177,45 +211,20 @@ if __name__ == '__main__':
         start = time.time()
         total_loss = 0
 
+        batch_time = time.time()
         for i, (inp, target) in enumerate(dataset.take(steps_per_epoch)):
-            loss = 0
-
-            with tf.GradientTape() as tape:
-                enc_output, state = encoder(inp)
-
-                dec_hidden = state
-
-                dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
-                pred = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
-
-                for t in range(1, target.shape[1]):
-                    predictions, dec_hidden = decoder(dec_input, dec_hidden)
-
-                    loss += loss_function(target[:, t], predictions, loss_object)
-
-                    # using teacher forcing
-                    dec_input = tf.expand_dims(target[:, t], 1)
-                    pred = numpy.hstack((pred, tf.expand_dims(tf.argmax(predictions, axis=1), 1)))
-
-                train_acc_metric.update_state(
-                    tf.expand_dims(target, 2),
-                    tf.expand_dims(pred, 2)
-                )
-
-            batch_loss = loss / target.shape[1]
-            variables = encoder.trainable_variables + decoder.trainable_variables
-            gradients = tape.gradient(loss, variables)
-            optimizer.apply_gradients(zip(gradients, variables))
+            batch_loss = train_step(inp, target, target_tokenizer, encoder, decoder, optimizer, train_acc_metric)
+            total_loss += batch_loss
 
             if i % 50 == 0:
                 print(f"Epoch {epoch + 1} Batch {i} Loss {batch_loss:.4f}, Acc: {train_acc_metric.result()}")
+                print(f"Time executing: {time.time() - batch_time} sec\n")
+                batch_time = time.time()
                 train_acc_metric.reset_states()
 
         val_acc_metric.reset_states()
         accuracy(input_val, target_val, encoder, decoder, val_acc_metric, target_tokenizer)
 
-        # TODO: optmiize code
-        # TODO: make it less spagetti
         # TODO: save checkpoints
 
         print(f"Epoch {epoch + 1} Loss {total_loss / steps_per_epoch:.4f}. Val acc: {val_acc_metric.result()}")
