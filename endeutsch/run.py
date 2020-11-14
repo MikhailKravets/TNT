@@ -2,6 +2,7 @@ import re
 import time
 from pathlib import Path
 
+import numpy
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
@@ -59,9 +60,22 @@ def loss_function(real, pred, loss_object):
     return tf.reduce_mean(loss_)
 
 
-def evaluate(sentence, input_tokenizer, target_tokenizer, encoder, decoder):
+def accuracy(x, y, encoder, decoder, metric, target_tokenizer):
+    enc_output, state = encoder(x)
+    dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * len(y), 1)
+
+    for i in range(y.shape[1]):
+        predictions, state = decoder(dec_input, state)
+        max_id = tf.expand_dims(tf.argmax(predictions, axis=1), 1)
+
+        metric.update_state(tf.expand_dims(y[:, i], 1), max_id)
+
+        dec_input = max_id
+
+
+def translate(sentence, inp_tokenizer, target_tokenizer, encoder, decoder):
     sentence = preprocess_sentence(sentence)
-    inputs = [input_tokenizer.word_index[v] for v in sentence.split(' ')]
+    inputs = [inp_tokenizer.word_index[v] for v in sentence.split(' ')]
     inputs = tf.keras.preprocessing.sequence.pad_sequences([inputs], padding='post')
 
     enc_output, state = encoder(inputs)
@@ -156,6 +170,9 @@ if __name__ == '__main__':
     optimizer = tf.keras.optimizers.Adam()
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 
+    train_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
+    val_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
+
     for epoch in range(EPOCHS):
         start = time.time()
         total_loss = 0
@@ -166,6 +183,7 @@ if __name__ == '__main__':
             with tf.GradientTape() as tape:
                 enc_output, state = encoder(inp)
                 dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
+                pred = dec_input
 
                 for t in range(1, target.shape[1]):
                     predictions, hidden = decoder(dec_input, state)
@@ -174,6 +192,12 @@ if __name__ == '__main__':
 
                     # using teacher forcing
                     dec_input = tf.expand_dims(target[:, t], 1)
+                    pred = numpy.hstack((pred, tf.expand_dims(tf.argmax(predictions, axis=1), 1)))
+
+                train_acc_metric.update_state(
+                    tf.expand_dims(target, 2),
+                    tf.expand_dims(pred, 2)
+                )
 
             batch_loss = loss / target.shape[1]
             variables = encoder.trainable_variables + decoder.trainable_variables
@@ -181,10 +205,13 @@ if __name__ == '__main__':
             optimizer.apply_gradients(zip(gradients, variables))
 
             if i % 50 == 0:
-                print(f"Epoch {epoch + 1} Batch {i} Loss {batch_loss:.4f}")
+                print(f"Epoch {epoch + 1} Batch {i} Loss {batch_loss:.4f}, Acc: {train_acc_metric.result()}")
+                train_acc_metric.reset_states()
 
-        # TODO: calculate validation accuracy
-        # TODO: train on whole dataset
+        val_acc_metric.reset_states()
+        accuracy(input_val, target_val, encoder, decoder, val_acc_metric, target_tokenizer)
 
-        print(f"Epoch {epoch + 1} Loss {total_loss / steps_per_epoch:.4f}")
+        # TODO: okay, accuracy calculation added. Why isn't it training correctly???
+
+        print(f"Epoch {epoch + 1} Loss {total_loss / steps_per_epoch:.4f}. Val acc: {val_acc_metric.result()}")
         print(f"Time taken for 1 epoch {time.time() - start} sec\n")
