@@ -60,7 +60,7 @@ def loss_function(real, pred, loss_object):
     return tf.reduce_mean(loss_)
 
 
-@tf.function
+# @tf.function
 def train_step(inp, target, target_tokenizer, encoder, decoder, optimizer, metric):
     loss = 0
 
@@ -73,7 +73,7 @@ def train_step(inp, target, target_tokenizer, encoder, decoder, optimizer, metri
         pred = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
 
         for t in range(1, target.shape[1]):
-            predictions, dec_hidden = decoder(dec_input, dec_hidden)
+            predictions, dec_hidden = decoder(dec_input, dec_hidden, enc_output)
 
             loss += loss_function(target[:, t], predictions, loss_object)
 
@@ -95,11 +95,11 @@ def train_step(inp, target, target_tokenizer, encoder, decoder, optimizer, metri
 
 
 def accuracy(x, y, encoder, decoder, metric, target_tokenizer):
-    enc_output, state = encoder(x, training=False)
+    enc_output, state = encoder(x)
     dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * len(y), 1)
 
     for i in range(y.shape[1]):
-        predictions, state = decoder(dec_input, state, training=False)
+        predictions, state = decoder(dec_input, state, enc_output)
         max_id = tf.expand_dims(tf.argmax(predictions, axis=1), 1)
 
         metric.update_state(tf.expand_dims(y[:, i], 1), max_id)
@@ -129,6 +129,36 @@ def translate(sentence, inp_tokenizer, target_tokenizer, encoder, decoder):
         dec_input = tf.expand_dims([max_id], 0)
 
     return result
+
+
+class BahdanauAttention(tf.keras.layers.Layer):
+    def __init__(self, units):
+        super(BahdanauAttention, self).__init__()
+        self.W1 = tf.keras.layers.Dense(units)
+        self.W2 = tf.keras.layers.Dense(units)
+        self.V = tf.keras.layers.Dense(1)
+
+    def call(self, query, values):
+        # query hidden state shape == (batch_size, hidden size)
+        # query_with_time_axis shape == (batch_size, 1, hidden size)
+        # values shape == (batch_size, max_len, hidden size)
+        # we are doing this to broadcast addition along the time axis to calculate the score
+        query_with_time_axis = tf.expand_dims(query, 1)
+
+        # score shape == (batch_size, max_length, 1)
+        # we get 1 at the last axis because we are applying score to self.V
+        # the shape of the tensor before applying self.V is (batch_size, max_length, units)
+        score = self.V(tf.nn.tanh(
+            self.W1(query_with_time_axis) + self.W2(values)))
+
+        # attention_weights shape == (batch_size, max_length, 1)
+        attention_weights = tf.nn.softmax(score, axis=1)
+
+        # context_vector shape after sum == (batch_size, hidden_size)
+        context_vector = attention_weights * values
+        context_vector = tf.reduce_sum(context_vector, axis=1)
+
+        return context_vector
 
 
 class Encoder(tf.keras.Model):
@@ -161,11 +191,15 @@ class Decoder(tf.keras.Model):
             return_state=True,
             recurrent_initializer='glorot_uniform'
         )
+        self.attention = BahdanauAttention(self.units)
         self.dense = tf.keras.layers.Dense(vocab_size)
 
-    def call(self, inputs, hidden, training=None, mask=None):
+    def call(self, inputs, hidden, enc_output, training=None, mask=None):
+        context_vector = self.attention(hidden, enc_output)
         x = self.embedding(inputs)
-        output, state = self.gru(x, initial_state=hidden)
+
+        x = tf.concat([tf.expand_dims(context_vector, 1), x], axis=-1)
+        output, state = self.gru(x)
 
         output = tf.reshape(output, (-1, output.shape[2]))
 
@@ -188,12 +222,14 @@ if __name__ == '__main__':
     dataset = tf.data.Dataset.from_tensor_slices((input_train, target_train)).shuffle(len(input_train))
     dataset = dataset.batch(BATCH_SIZE)
 
-    sample_batch = next(iter(dataset.take(1)))
+    sample_batch = next(iter(dataset.take(2)))
     encoder = Encoder(vocab_inp_size, EMBEDDING_DIM, UNITS)
-    sample_encoder_output, sample_state = encoder(sample_batch[0])
+
+    input_x, input_y = sample_batch[0], tf.expand_dims(sample_batch[1][:, 0], 1)
+    sample_encoder_output, sample_state = encoder(input_x)
 
     decoder = Decoder(vocab_tar_size, EMBEDDING_DIM, UNITS)
-    sample_decoder_output, sample_decoder_state = decoder(sample_batch[1], sample_state)
+    sample_decoder_output, sample_decoder_state = decoder(input_y, sample_state, sample_encoder_output)
 
     print(f"Encoder output shape: {sample_encoder_output.shape}")
     print(f"State shape: {sample_state.shape}")
@@ -201,7 +237,7 @@ if __name__ == '__main__':
     print(f"State shape (from dec. should be same): {sample_decoder_state.shape}")
 
     steps_per_epoch = len(input_train) // BATCH_SIZE
-    optimizer = tf.keras.optimizers.Adam()
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 
     train_acc_metric = tf.keras.metrics.Accuracy()
