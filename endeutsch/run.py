@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-NUM_EXAMPLES = 20_000  # Place -1 to load all examples
+NUM_EXAMPLES = 150_000  # Place -1 to load all examples
 BATCH_SIZE = 64
 EMBEDDING_DIM = 256
 UNITS = 1024
@@ -61,11 +61,11 @@ def loss_function(real, pred, loss_object):
 
 
 def accuracy(x, y, encoder, decoder, metric, target_tokenizer):
-    enc_output, state = encoder(x)
+    enc_output, state = encoder(x, training=False)
     dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * len(y), 1)
 
     for i in range(y.shape[1]):
-        predictions, state = decoder(dec_input, state)
+        predictions, state = decoder(dec_input, state, training=False)
         max_id = tf.expand_dims(tf.argmax(predictions, axis=1), 1)
 
         metric.update_state(tf.expand_dims(y[:, i], 1), max_id)
@@ -170,8 +170,8 @@ if __name__ == '__main__':
     optimizer = tf.keras.optimizers.Adam()
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 
-    train_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
-    val_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
+    train_acc_metric = tf.keras.metrics.Accuracy()
+    val_acc_metric = tf.keras.metrics.Accuracy()
 
     for epoch in range(EPOCHS):
         start = time.time()
@@ -182,11 +182,14 @@ if __name__ == '__main__':
 
             with tf.GradientTape() as tape:
                 enc_output, state = encoder(inp)
+
+                dec_hidden = state
+
                 dec_input = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
-                pred = dec_input
+                pred = tf.expand_dims([target_tokenizer.word_index['<start>']] * BATCH_SIZE, 1)
 
                 for t in range(1, target.shape[1]):
-                    predictions, hidden = decoder(dec_input, state)
+                    predictions, dec_hidden = decoder(dec_input, dec_hidden)
 
                     loss += loss_function(target[:, t], predictions, loss_object)
 
@@ -211,7 +214,9 @@ if __name__ == '__main__':
         val_acc_metric.reset_states()
         accuracy(input_val, target_val, encoder, decoder, val_acc_metric, target_tokenizer)
 
-        # TODO: okay, accuracy calculation added. Why isn't it training correctly???
+        # TODO: optmiize code
+        # TODO: make it less spagetti
+        # TODO: save checkpoints
 
         print(f"Epoch {epoch + 1} Loss {total_loss / steps_per_epoch:.4f}. Val acc: {val_acc_metric.result()}")
         print(f"Time taken for 1 epoch {time.time() - start} sec\n")
