@@ -11,6 +11,7 @@ matplotlib = "*"
 pandas = "*"
 tensorflow = "*"
 sklearn = "*"
+tfds-nightly = "*"
 
 [requires]
 python_version = "3.8"
